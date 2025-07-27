@@ -107,6 +107,9 @@ Make sure you have these ready:
       "prompt_focus": "causes, solutions, debug commands, mitigation"
     }
     ```
+<img width="953" height="614" alt="image" src="https://github.com/user-attachments/assets/a1e4fe3b-51b1-490b-97b9-b368f0504bff" />
+<img width="789" height="326" alt="image" src="https://github.com/user-attachments/assets/0efb1428-f6b4-4b88-95c0-3351bbb6f719" />
+
 
 > 🔐 Tip: Use Zabbix global macro like `{$GEMINI_API_KEY}` instead of hardcoding your API key.
 
