@@ -1,0 +1,148 @@
+var Gemini = {
+    params: {},
+    setParams: function(params) {
+        if (typeof params !== 'object') {
+            throw 'Invalid parameters provided to Gemini.setParams.';
+        }
+        if (typeof params.api_key !== 'string' || params.api_key === '') {
+            throw 'API key for Gemini is required and cannot be empty.';
+        }
+        Gemini.params = params;
+        // Default URL, can be overridden if needed in params
+        Gemini.params.url = Gemini.params.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+        Zabbix.log(4, '[ Gemini Webhook ] Gemini parameters set: ' + JSON.stringify(Gemini.params));
+    },
+    request: function(data) {
+        if (!Gemini.params.api_key) {
+            throw 'Gemini API key is missing. Call Gemini.setParams first.';
+        }
+        
+        var request = new HttpRequest();
+        request.addHeader('Content-Type: application/json');
+        
+        var urlWithKey = Gemini.params.url + '?key=' + Gemini.params.api_key;
+        
+        // Add optional model parameters if they exist
+        if (Gemini.params.temperature !== undefined) {
+            if (!data.generationConfig) data.generationConfig = {};
+            data.generationConfig.temperature = Gemini.params.temperature;
+        }
+        if (Gemini.params.maxOutputTokens !== undefined) {
+            if (!data.generationConfig) data.generationConfig = {};
+            data.generationConfig.maxOutputTokens = Gemini.params.maxOutputTokens;
+        }
+        if (Gemini.params.topP !== undefined) {
+            if (!data.generationConfig) data.generationConfig = {};
+            data.generationConfig.topP = Gemini.params.topP;
+        }
+        if (Gemini.params.topK !== undefined) {
+            if (!data.generationConfig) data.generationConfig = {};
+            data.generationConfig.topK = Gemini.params.topK;
+        }
+
+        Zabbix.log(4, '[ Gemini Webhook ] Sending request to: ' + urlWithKey + '\nPayload: ' + JSON.stringify(data));
+        var response = request.post(urlWithKey, JSON.stringify(data));
+        
+        Zabbix.log(4, '[ Gemini Webhook ] Received response with status code ' + request.getStatus() + '\nResponse: ' + response);
+        
+        if (request.getStatus() < 200 || request.getStatus() >= 300) {
+            var errorMessage = 'Gemini API request failed with status code ' + request.getStatus() + '.';
+            try {
+                var errorResponse = JSON.parse(response);
+                if (errorResponse && errorResponse.error && errorResponse.error.message) {
+                    errorMessage += ' Error: ' + errorResponse.error.message;
+                }
+            } catch (e) {
+                Zabbix.log(4, '[ Gemini Webhook ] Failed to parse error response: ' + e);
+            }
+            throw errorMessage;
+        }
+        
+        try {
+            response = JSON.parse(response);
+        } catch (error) {
+            Zabbix.log(4, '[ Gemini Webhook ] Failed to parse JSON response from Gemini: ' + error);
+            throw 'Invalid JSON response received from Gemini API.';
+        }
+        return response;
+    }
+};
+
+try {
+    var params = JSON.parse(value),
+        data = {},
+        result = "",
+        // Define required parameters for the webhook script
+        required_params = ['api_key', 'alert_subject'];
+        
+    // Validate required parameters
+    Object.keys(required_params).forEach(function(key) {
+        if (params[key] === undefined || params[key] === null || params[key] === '') {
+            throw 'Missing or empty required parameter: "' + key + '".';
+        }
+    });
+
+    // Optional parameters for Gemini model configuration
+    var geminiConfig = {
+        api_key: params.api_key,
+        temperature: params.temperature !== undefined ? parseFloat(params.temperature) : 0.7, // Default temperature
+        maxOutputTokens: params.maxOutputTokens !== undefined ? parseInt(params.maxOutputTokens) : 200, // Default max tokens
+        topP: params.topP !== undefined ? parseFloat(params.topP) : 0.9,
+        topK: params.topK !== undefined ? parseInt(params.topK) : 40
+    };
+
+    // Prompt customization
+    var prompt_language = params.prompt_language || 'English'; // Default to English
+    var prompt_length = params.prompt_length || 'concise'; // 'concise' or 'detailed'
+    var prompt_focus = params.prompt_focus || 'causes, solutions, debug commands, mitigation'; // Default focus
+
+    var basePrompt = "";
+    if (prompt_language === 'Spanish') {
+        basePrompt = "La alerta: " + params.alert_subject + " ocurrió en Zabbix. ";
+        if (prompt_length === 'concise') {
+            basePrompt += "Sugiere posibles " + prompt_focus + " para resolver este problema. No hagas un texto grande, " +
+                          "solamente unas 10 líneas.";
+        } else { // detailed
+            basePrompt += "Proporciona un análisis detallado de las posibles " + prompt_focus + " para resolver este problema. " +
+                          "Incluye pasos detallados y ejemplos si es posible.";
+        }
+    } else { // Default to English
+        basePrompt = "The alert: " + params.alert_subject + " occurred in Zabbix. ";
+        if (prompt_length === 'concise') {
+            basePrompt += "Suggest possible " + prompt_focus + " to resolve this issue. Keep it concise, " +
+                          "around 10 lines.";
+        } else { // detailed
+            basePrompt += "Provide a detailed analysis of possible " + prompt_focus + " to resolve this issue. " +
+                          "Include detailed steps and examples where applicable.";
+        }
+    }
+
+    // Format the query for Gemini
+    data = {
+        contents: [{
+            parts: [{
+                text: basePrompt
+            }]
+        }]
+    };
+
+    // Configure the Gemini API with dynamic parameters
+    Gemini.setParams(geminiConfig);
+    
+    // Make the request to Gemini
+    var response = Gemini.request(data);
+    
+    if (response && response.candidates && response.candidates.length > 0 && response.candidates[0].content && response.candidates[0].content.parts && response.candidates[0].content.parts.length > 0) {
+        result = response.candidates[0].content.parts[0].text.trim();
+    } else {
+        // Log the full response if no valid content is found for debugging
+        Zabbix.log(3, '[ Gemini Webhook ] Gemini response did not contain expected content: ' + JSON.stringify(response));
+        throw 'Gemini did not return a valid response or content.';
+    }
+    
+    return result;
+    
+} catch (error) {
+    Zabbix.log(3, '[ Gemini Webhook ] ERROR: ' + error);
+    throw 'Sending failed: ' + error;
+}
