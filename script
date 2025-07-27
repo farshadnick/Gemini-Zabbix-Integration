@@ -76,9 +76,10 @@ try {
         required_params = ['api_key', 'alert_subject'];
         
     // Validate required parameters
-    Object.keys(required_params).forEach(function(key) {
-        if (params[key] === undefined || params[key] === null || params[key] === '') {
-            throw 'Missing or empty required parameter: "' + key + '".';
+    // CORRECTED LINE BELOW: Iterate directly over the array values
+    required_params.forEach(function(paramName) {
+        if (params[paramName] === undefined || params[paramName] === null || params[paramName] === '') {
+            throw 'Missing or empty required parameter: "' + paramName + '".';
         }
     });
 
